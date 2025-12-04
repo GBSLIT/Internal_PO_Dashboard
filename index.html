@@ -506,23 +506,38 @@
      *  MSAL + GRAPH SETUP *
      ***********************/
 
-    // ⚠️ CHANGE redirectUri to your real GitHub Pages URL AND also set the same in Azure AD app registration
+    const REDIRECT_URI = "https://gbslit.github.io/Internal_PO_Dashboard/";
+
     const msalConfig = {
       auth: {
-        clientId: "8da3af4e-2f63-4565-901d-1a11a81d610d", // Application (client) ID
-        authority: "https://login.microsoftonline.com/93846c24-8666-4033-8b6e-901877a2cf98", // Tenant ID
-        redirectUri: "https://gbslit.github.io/Internal_PO_Dashboard/" // e.g. "https://yourusername.github.io/your-repo/"
+        clientId: "8da3af4e-2f63-4565-901d-1a11a81d610d",
+        authority: "https://login.microsoftonline.com/93846c24-8666-4033-8b6e-901877a2cf98",
+        redirectUri: REDIRECT_URI
+      },
+      cache: {
+        cacheLocation: "sessionStorage",
+        storeAuthStateInCookie: false
       }
     };
 
-    const graphDriveId = "b!btaPqJ-5kU-kkE4KEoaxo8fltt6l6xpLs60U3YTj_EAxQMgJa8fsSLceYscvhxNo";
-    const graphFileId  = "16GCLEJF6QPT4M3PLEFEITOFBJOBB4R2E";
+    // Use your OneDrive sharing URL and Graph "shares" API
+    const sharingUrl =
+      "https://gbslhk-my.sharepoint.com/:x:/g/personal/it_globalbasesourcing_com/IQC-g-fGbeshSIm4oUuCHkdEAZNBE1q-E0IazPwfyZP2dD0?e=5XGr50";
 
     const loginRequest = {
-      scopes: ["Files.Read.All"]
+      scopes: ["Files.Read.All"],
+      redirectUri: REDIRECT_URI
     };
 
     const msalInstance = new msal.PublicClientApplication(msalConfig);
+
+    function encodeSharingUrlForGraph(url) {
+      const base64 = btoa(unescape(encodeURIComponent(url)))
+        .replace(/\+/g, "-")
+        .replace(/\//g, "_")
+        .replace(/=+$/, "");
+      return "u!" + base64;
+    }
 
     async function getActiveAccount() {
       const accounts = msalInstance.getAllAccounts();
@@ -547,16 +562,19 @@
         });
         return result.accessToken;
       } catch (e) {
-        console.warn("Silent token failed, falling back to popup:", e);
-        const result = await msalInstance.acquireTokenPopup(loginRequest);
+        console.warn("Silent token failed, using popup:", e);
+        const result = await msalInstance.acquireTokenPopup({
+          ...loginRequest,
+          account
+        });
         return result.accessToken;
       }
     }
 
-    // Ask Graph for the Excel file metadata and get the @microsoft.graph.downloadUrl
     async function getExcelDownloadUrl() {
       const token = await getToken();
-      const url = `https://graph.microsoft.com/v1.0/drives/${graphDriveId}/items/${graphFileId}`;
+      const encoded = encodeSharingUrlForGraph(sharingUrl);
+      const url = `https://graph.microsoft.com/v1.0/shares/${encoded}/driveItem`;
 
       const resp = await fetch(url, {
         headers: {
@@ -565,16 +583,19 @@
       });
 
       if (!resp.ok) {
-        throw new Error("Graph error: " + resp.status);
+        let extra = "";
+        try {
+          const errJson = await resp.json();
+          extra = " - " + (errJson.error && errJson.error.message ? errJson.error.message : "");
+        } catch (e) {}
+        throw new Error("Graph error: " + resp.status + extra);
       }
 
       const json = await resp.json();
       const downloadUrl = json["@microsoft.graph.downloadUrl"];
-
       if (!downloadUrl) {
-        throw new Error("No downloadUrl found on Graph file response.");
+        throw new Error("downloadUrl missing from Graph response.");
       }
-
       return downloadUrl;
     }
 
@@ -627,7 +648,9 @@
 
         setStatus("Downloading workbook from Graph…", "loading");
 
-        const resp = await fetch(downloadUrl + (downloadUrl.includes("?") ? "&" : "?") + "t=" + Date.now());
+        const resp = await fetch(
+          downloadUrl + (downloadUrl.includes("?") ? "&" : "?") + "t=" + Date.now()
+        );
         if (!resp.ok) throw new Error("Download error: " + resp.status);
 
         const buf = await resp.arrayBuffer();
@@ -645,7 +668,6 @@
         allRows = data;
         columns = Object.keys(allRows[0]);
 
-        // Map logical columns based on likely names
         col.po       = findColumn(["PO NO", "PO No", "PO Number", "PONO"]);
         col.stepCode = findColumn(["Step Code", "Step", "Document Type"]);
         col.timestamp= findColumn(["Timestamp", "Date", "Datetime"]);
@@ -662,7 +684,8 @@
         applyFilters();
 
         setStatus(`Connected to Graph workbook (${allRows.length} rows)`, "ok");
-        document.getElementById("docsSubtitle").textContent = "Select a PO to see its document trail.";
+        document.getElementById("docsSubtitle").textContent =
+          "Select a PO to see its document trail.";
       } catch (e) {
         console.error(e);
         setStatus("Error loading from Graph / Excel. Check console.", "error");
@@ -828,10 +851,8 @@
       loadExcel();
     });
 
-    // Try to silently load if user already signed in before
     (async () => {
       setStatus("Ready. Click “Sign in” to load data.", "loading");
-      // Optional: auto-load if account already exists
       const account = await getActiveAccount();
       if (account) {
         loadExcel();
@@ -840,4 +861,3 @@
   </script>
 </body>
 </html>
-
