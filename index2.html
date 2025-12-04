@@ -1,0 +1,842 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>PO Tracking Dashboard</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <!-- MSAL for Microsoft login -->
+  <script src="https://alcdn.msauth.net/browser/2.37.0/js/msal-browser.min.js"></script>
+  <!-- SheetJS to read Excel in the browser -->
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+
+  <style>
+    /* ====== Base ====== */
+    * { box-sizing: border-box; }
+
+    :root {
+      --bg: #f3f6fb;
+      --card-bg: #ffffff;
+      --primary: #004b8d;
+      --primary-soft: #e1ecf8;
+      --accent: #00a896;
+      --text-main: #1f2933;
+      --text-muted: #6b7280;
+      --border-soft: #d1d9e6;
+      --radius-lg: 14px;
+      --shadow-soft: 0 18px 35px rgba(15, 23, 42, 0.12);
+    }
+
+    body {
+      margin: 0;
+      padding: 0;
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
+        sans-serif;
+      background: radial-gradient(circle at top, #e0ebff 0, var(--bg) 45%);
+      color: var(--text-main);
+    }
+
+    .page {
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .shell {
+      max-width: 1220px;
+      margin: 0 auto;
+      padding: 24px 18px 32px;
+    }
+
+    /* ====== Top bar ====== */
+    .app-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 18px;
+      gap: 12px;
+    }
+
+    .app-title-block {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .app-logo {
+      width: 38px;
+      height: 38px;
+      border-radius: 50%;
+      background: linear-gradient(135deg, var(--primary), var(--accent));
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: white;
+      font-weight: 700;
+      font-size: 18px;
+      box-shadow: 0 12px 25px rgba(15, 23, 42, 0.2);
+    }
+
+    .app-title-block h1 {
+      margin: 0;
+      font-size: 24px;
+      letter-spacing: 0.02em;
+    }
+
+    .app-subtitle {
+      margin: 0;
+      font-size: 12px;
+      color: var(--text-muted);
+    }
+
+    .status-badge {
+      padding: 6px 10px;
+      border-radius: 999px;
+      font-size: 11px;
+      background: var(--card-bg);
+      border: 1px solid var(--border-soft);
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      color: var(--text-muted);
+    }
+    .status-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: #fbbf24;
+    }
+
+    .login-btn {
+      margin-left: 8px;
+      padding: 4px 10px;
+      border-radius: 999px;
+      border: 1px solid var(--border-soft);
+      background: #ffffff;
+      font-size: 11px;
+      cursor: pointer;
+    }
+    .login-btn:hover {
+      background: #f3f4f6;
+    }
+
+    /* ====== Layout grid ====== */
+    .grid-main {
+      display: grid;
+      grid-template-columns: minmax(0, 3.2fr);
+      gap: 18px;
+    }
+
+    .card {
+      background: var(--card-bg);
+      border-radius: var(--radius-lg);
+      box-shadow: var(--shadow-soft);
+      border: 1px solid rgba(148, 163, 184, 0.25);
+      padding: 16px 18px 18px;
+    }
+
+    .card-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 14px;
+      gap: 10px;
+    }
+
+    .card-title {
+      font-size: 14px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--text-muted);
+    }
+
+    /* ====== Controls row ====== */
+    .controls-row {
+      display: grid;
+      grid-template-columns: minmax(0, 2.6fr) minmax(0, 2.2fr);
+      gap: 14px;
+      margin-bottom: 18px;
+    }
+
+    @media (max-width: 900px) {
+      .controls-row {
+        grid-template-columns: minmax(0, 1fr);
+      }
+    }
+
+    .po-search-card {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .po-label {
+      font-size: 12px;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      color: var(--text-muted);
+      font-weight: 600;
+    }
+
+    .po-control {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      background: linear-gradient(90deg, var(--primary), #0b7ac9);
+      padding: 10px 12px;
+      border-radius: 999px;
+      box-shadow: 0 16px 30px rgba(15, 23, 42, 0.35);
+    }
+
+    .po-control-label {
+      color: #e5edff;
+      font-size: 13px;
+      white-space: nowrap;
+      font-weight: 500;
+    }
+
+    .po-select {
+      flex: 1;
+      border-radius: 999px;
+      border: none;
+      padding: 7px 12px;
+      font-size: 13px;
+      outline: none;
+    }
+
+    /* Filters */
+    .filters-grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 10px;
+    }
+
+    @media (max-width: 600px) {
+      .filters-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+    }
+
+    .filter-group label {
+      display: block;
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.09em;
+      color: var(--text-muted);
+      margin-bottom: 4px;
+      font-weight: 600;
+    }
+
+    .filter-group select {
+      width: 100%;
+      padding: 6px 9px;
+      font-size: 13px;
+      border-radius: 999px;
+      border: 1px solid var(--border-soft);
+      background: #f9fafb;
+      outline: none;
+      transition: border 0.15s, background 0.15s, box-shadow 0.15s;
+    }
+
+    .filter-group select:focus {
+      border-color: var(--primary);
+      background: #ffffff;
+      box-shadow: 0 0 0 1px rgba(37, 99, 235, 0.25);
+    }
+
+    /* ====== Info tables ====== */
+    .info-row {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 14px;
+      margin-bottom: 18px;
+    }
+
+    @media (max-width: 800px) {
+      .info-row {
+        grid-template-columns: minmax(0, 1fr);
+      }
+    }
+
+    .info-table {
+      width: 100%;
+      border-collapse: collapse;
+      border-radius: 12px;
+      overflow: hidden;
+      background: #f9fafb;
+    }
+
+    .info-table th,
+    .info-table td {
+      font-size: 12px;
+      padding: 7px 10px;
+      border-bottom: 1px solid #e5e7eb;
+    }
+
+    .info-table th {
+      width: 42%;
+      text-align: left;
+      font-weight: 600;
+      color: var(--text-muted);
+      background: #eef2ff;
+    }
+
+    .info-table tr:last-child th,
+    .info-table tr:last-child td {
+      border-bottom: none;
+    }
+
+    .info-value {
+      font-weight: 500;
+    }
+
+    /* ====== Documents table ====== */
+    .docs-card {
+      margin-top: 4px;
+    }
+
+    .docs-header-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      margin-bottom: 6px;
+    }
+
+    .docs-subtitle {
+      font-size: 12px;
+      color: var(--text-muted);
+    }
+
+    .pill {
+      font-size: 11px;
+      padding: 4px 9px;
+      border-radius: 999px;
+      background: var(--primary-soft);
+      color: var(--primary);
+      border: 1px solid rgba(59, 130, 246, 0.4);
+    }
+
+    .table-wrapper {
+      border-radius: 12px;
+      overflow: hidden;
+      border: 1px solid #dde3f0;
+      background: #ffffff;
+      max-height: 460px;
+      box-shadow: 0 14px 26px rgba(15, 23, 42, 0.12);
+    }
+
+    table.data {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 12px;
+    }
+
+    table.data thead {
+      background: linear-gradient(90deg, #0b63ce, #004b8d);
+      color: white;
+    }
+
+    table.data th,
+    table.data td {
+      padding: 8px 10px;
+      border-bottom: 1px solid #edf2ff;
+      vertical-align: top;
+    }
+
+    table.data th {
+      font-weight: 600;
+      position: sticky;
+      top: 0;
+      z-index: 2;
+      text-align: left;
+    }
+
+    table.data tbody tr:hover {
+      background: #f3f6ff;
+    }
+
+    table.data td.status-pill {
+      width: 110px;
+    }
+
+    .status-chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 3px 8px;
+      border-radius: 999px;
+      font-size: 11px;
+    }
+    .status-chip.done {
+      background: #e0fce5;
+      color: #047857;
+    }
+    .status-chip.pending {
+      background: #fff7e0;
+      color: #92400e;
+    }
+    .status-chip-dot {
+      width: 7px;
+      height: 7px;
+      border-radius: 999px;
+      background: currentColor;
+    }
+
+    a.link {
+      text-decoration: none;
+      font-weight: 500;
+      font-size: 12px;
+    }
+    a.link:hover {
+      text-decoration: underline;
+    }
+  </style>
+</head>
+<body>
+  <div class="page">
+    <div class="shell">
+      <!-- Header -->
+      <header class="app-header">
+        <div class="app-title-block">
+          <div class="app-logo">PO</div>
+          <div>
+            <h1>PO Tracking Dashboard</h1>
+            <p class="app-subtitle">Live view of documents & shipment milestones</p>
+          </div>
+        </div>
+        <div class="status-badge" id="statusBadge">
+          <span class="status-dot" id="statusDot"></span>
+          <span id="statusText">Initializing…</span>
+          <button id="loginBtn" class="login-btn" type="button">Sign in</button>
+        </div>
+      </header>
+
+      <!-- Main grid -->
+      <div class="grid-main">
+        <section>
+          <!-- Controls -->
+          <div class="controls-row card">
+            <div class="po-search-card">
+              <span class="po-label">Primary filter</span>
+              <div class="po-control">
+                <span class="po-control-label">Search PO wise</span>
+                <select id="poSelect" class="po-select">
+                  <option value="">All POs</option>
+                </select>
+              </div>
+            </div>
+
+            <div>
+              <div class="card-header" style="padding:0 0 4px;">
+                <span class="card-title">Additional filters</span>
+              </div>
+              <div class="filters-grid">
+                <div class="filter-group" id="yearFilterWrapper">
+                  <label for="yearFilter">Year</label>
+                  <select id="yearFilter">
+                    <option value="">All</option>
+                  </select>
+                </div>
+                <div class="filter-group" id="customerFilterWrapper">
+                  <label for="customerFilter">Customer</label>
+                  <select id="customerFilter">
+                    <option value="">All</option>
+                  </select>
+                </div>
+                <div class="filter-group" id="vendorFilterWrapper">
+                  <label for="vendorFilter">Vendor</label>
+                  <select id="vendorFilter">
+                    <option value="">All</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- PO header info -->
+          <div class="info-row">
+            <div class="card">
+              <div class="card-header">
+                <span class="card-title">PO Summary</span>
+              </div>
+              <table class="info-table">
+                <tr><th>PO Number</th><td class="info-value" id="infoPoNumber">–</td></tr>
+                <tr><th>ETD</th><td class="info-value" id="infoEtd">–</td></tr>
+                <tr><th>Year</th><td class="info-value" id="infoYear">–</td></tr>
+              </table>
+            </div>
+
+            <div class="card">
+              <div class="card-header">
+                <span class="card-title">Partner & Shipment</span>
+              </div>
+              <table class="info-table">
+                <tr><th>Customer Name</th><td class="info-value" id="infoCustomer">–</td></tr>
+                <tr><th>Vendor Name</th><td class="info-value" id="infoVendor">–</td></tr>
+                <tr><th>Shipment</th><td class="info-value" id="infoShipment">–</td></tr>
+              </table>
+            </div>
+          </div>
+
+          <!-- Documents table -->
+          <div class="card docs-card">
+            <div class="docs-header-row">
+              <div>
+                <div class="card-title">Documents / Steps</div>
+                <div class="docs-subtitle" id="docsSubtitle">
+                  Sign in and select a PO to see its document trail.
+                </div>
+              </div>
+              <div id="rowsPill" class="pill">0 rows</div>
+            </div>
+
+            <div class="table-wrapper">
+              <table class="data" id="docTable"></table>
+            </div>
+          </div>
+        </section>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    /***********************
+     *  MSAL + GRAPH SETUP *
+     ***********************/
+
+    // ⚠️ CHANGE redirectUri to your real GitHub Pages URL AND also set the same in Azure AD app registration
+    const msalConfig = {
+      auth: {
+        clientId: "8da3af4e-2f63-4565-901d-1a11a81d610d", // Application (client) ID
+        authority: "https://login.microsoftonline.com/93846c24-8666-4033-8b6e-901877a2cf98", // Tenant ID
+        redirectUri: window.location.origin // e.g. "https://yourusername.github.io/your-repo/"
+      }
+    };
+
+    const graphDriveId = "b!btaPqJ-5kU-kkE4KEoaxo8fltt6l6xpLs60U3YTj_EAxQMgJa8fsSLceYscvhxNo";
+    const graphFileId  = "16GCLEJF6QPT4M3PLEFEITOFBJOBB4R2E";
+
+    const loginRequest = {
+      scopes: ["Files.Read.All"]
+    };
+
+    const msalInstance = new msal.PublicClientApplication(msalConfig);
+
+    async function getActiveAccount() {
+      const accounts = msalInstance.getAllAccounts();
+      return accounts.length ? accounts[0] : null;
+    }
+
+    async function ensureLoggedIn() {
+      let account = await getActiveAccount();
+      if (!account) {
+        const loginResult = await msalInstance.loginPopup(loginRequest);
+        account = loginResult.account;
+      }
+      return account;
+    }
+
+    async function getToken() {
+      const account = await ensureLoggedIn();
+      try {
+        const result = await msalInstance.acquireTokenSilent({
+          ...loginRequest,
+          account
+        });
+        return result.accessToken;
+      } catch (e) {
+        console.warn("Silent token failed, falling back to popup:", e);
+        const result = await msalInstance.acquireTokenPopup(loginRequest);
+        return result.accessToken;
+      }
+    }
+
+    // Ask Graph for the Excel file metadata and get the @microsoft.graph.downloadUrl
+    async function getExcelDownloadUrl() {
+      const token = await getToken();
+      const url = `https://graph.microsoft.com/v1.0/drives/${graphDriveId}/items/${graphFileId}`;
+
+      const resp = await fetch(url, {
+        headers: {
+          Authorization: `Bearer ${token}`
+        }
+      });
+
+      if (!resp.ok) {
+        throw new Error("Graph error: " + resp.status);
+      }
+
+      const json = await resp.json();
+      const downloadUrl = json["@microsoft.graph.downloadUrl"];
+
+      if (!downloadUrl) {
+        throw new Error("No downloadUrl found on Graph file response.");
+      }
+
+      return downloadUrl;
+    }
+
+    /***********************
+     *   DASHBOARD LOGIC   *
+     ***********************/
+
+    let allRows = [];
+    let columns = [];
+    let col = {};
+    let linkColumns = [];
+
+    function escapeHtml(str) {
+      return String(str)
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#039;");
+    }
+
+    function findColumn(candidates) {
+      const lower = columns.map(c => c.toLowerCase());
+      for (const name of candidates) {
+        const idx = lower.indexOf(name.toLowerCase());
+        if (idx !== -1) return columns[idx];
+      }
+      return null;
+    }
+
+    function setStatus(text, mode) {
+      const dot = document.getElementById("statusDot");
+      const textEl = document.getElementById("statusText");
+      textEl.textContent = text;
+
+      if (mode === "ok") {
+        dot.style.background = "#22c55e";
+      } else if (mode === "error") {
+        dot.style.background = "#ef4444";
+      } else {
+        dot.style.background = "#fbbf24";
+      }
+    }
+
+    async function loadExcel() {
+      try {
+        setStatus("Signing in to Microsoft 365…", "loading");
+
+        const downloadUrl = await getExcelDownloadUrl();
+
+        setStatus("Downloading workbook from Graph…", "loading");
+
+        const resp = await fetch(downloadUrl + (downloadUrl.includes("?") ? "&" : "?") + "t=" + Date.now());
+        if (!resp.ok) throw new Error("Download error: " + resp.status);
+
+        const buf = await resp.arrayBuffer();
+        const wb = XLSX.read(buf, { type: "array" });
+
+        const sheetName = wb.SheetNames[0];
+        const ws = wb.Sheets[sheetName];
+
+        const data = XLSX.utils.sheet_to_json(ws, { defval: "" });
+        if (!data.length) {
+          setStatus("Excel loaded but no rows found.", "error");
+          return;
+        }
+
+        allRows = data;
+        columns = Object.keys(allRows[0]);
+
+        // Map logical columns based on likely names
+        col.po       = findColumn(["PO NO", "PO No", "PO Number", "PONO"]);
+        col.stepCode = findColumn(["Step Code", "Step", "Document Type"]);
+        col.timestamp= findColumn(["Timestamp", "Date", "Datetime"]);
+        col.status   = findColumn(["Status"]);
+        col.year     = findColumn(["Year"]);
+        col.customer = findColumn(["Customer Name", "Customer"]);
+        col.vendor   = findColumn(["Vendor Name", "Vendor"]);
+        col.etd      = findColumn(["ETD"]);
+        col.shipment = findColumn(["Shipment"]);
+
+        linkColumns = columns.filter(c => c.toLowerCase().includes("link"));
+
+        buildDropdowns();
+        applyFilters();
+
+        setStatus(`Connected to Graph workbook (${allRows.length} rows)`, "ok");
+        document.getElementById("docsSubtitle").textContent = "Select a PO to see its document trail.";
+      } catch (e) {
+        console.error(e);
+        setStatus("Error loading from Graph / Excel. Check console.", "error");
+      }
+    }
+
+    function uniq(values) {
+      return Array.from(new Set(values.filter(v => v !== "" && v != null)));
+    }
+
+    function fillSelect(selectEl, values) {
+      values.sort();
+      values.forEach(v => {
+        const opt = document.createElement("option");
+        opt.value = v;
+        opt.textContent = v;
+        selectEl.appendChild(opt);
+      });
+    }
+
+    function buildDropdowns() {
+      if (col.po) {
+        const poSelect = document.getElementById("poSelect");
+        const poValues = uniq(allRows.map(r => r[col.po]));
+        fillSelect(poSelect, poValues);
+      }
+
+      if (col.year) {
+        const yearSelect = document.getElementById("yearFilter");
+        fillSelect(yearSelect, uniq(allRows.map(r => r[col.year])));
+      } else {
+        document.getElementById("yearFilterWrapper").style.display = "none";
+      }
+
+      if (col.customer) {
+        const customerSelect = document.getElementById("customerFilter");
+        fillSelect(customerSelect, uniq(allRows.map(r => r[col.customer])));
+      } else {
+        document.getElementById("customerFilterWrapper").style.display = "none";
+      }
+
+      if (col.vendor) {
+        const vendorSelect = document.getElementById("vendorFilter");
+        fillSelect(vendorSelect, uniq(allRows.map(r => r[col.vendor])));
+      } else {
+        document.getElementById("vendorFilterWrapper").style.display = "none";
+      }
+
+      document.getElementById("poSelect").addEventListener("change", applyFilters);
+      document.getElementById("yearFilter").addEventListener("change", applyFilters);
+      document.getElementById("customerFilter").addEventListener("change", applyFilters);
+      document.getElementById("vendorFilter").addEventListener("change", applyFilters);
+    }
+
+    function applyFilters() {
+      const poVal       = document.getElementById("poSelect").value;
+      const yearVal     = document.getElementById("yearFilter").value;
+      const customerVal = document.getElementById("customerFilter").value;
+      const vendorVal   = document.getElementById("vendorFilter").value;
+
+      let rows = allRows.filter(r => {
+        if (col.po && poVal && String(r[col.po]).trim() !== poVal) return false;
+        if (col.year && yearVal && String(r[col.year]).trim() !== yearVal) return false;
+        if (col.customer && customerVal && String(r[col.customer]).trim() !== customerVal) return false;
+        if (col.vendor && vendorVal && String(r[col.vendor]).trim() !== vendorVal) return false;
+        return true;
+      });
+
+      updateHeader(rows);
+      renderDocTable(rows);
+
+      const pill = document.getElementById("rowsPill");
+      pill.textContent = `${rows.length} row${rows.length === 1 ? "" : "s"}`;
+
+      const subtitle = document.getElementById("docsSubtitle");
+      if (rows.length === 0) {
+        subtitle.textContent = "No matching steps for the current filters.";
+      } else if (poVal) {
+        subtitle.textContent = `Timeline of documents & checkpoints for PO ${poVal}.`;
+      } else {
+        subtitle.textContent = "Showing steps for all matching POs.";
+      }
+    }
+
+    function updateHeader(rows) {
+      const first = rows[0] || {};
+      document.getElementById("infoPoNumber").textContent =
+        col.po && first[col.po] ? first[col.po] : "–";
+      document.getElementById("infoEtd").textContent =
+        col.etd && first[col.etd] ? first[col.etd] : "–";
+      document.getElementById("infoYear").textContent =
+        col.year && first[col.year] ? first[col.year] : "–";
+
+      document.getElementById("infoCustomer").textContent =
+        col.customer && first[col.customer] ? first[col.customer] : "–";
+      document.getElementById("infoVendor").textContent =
+        col.vendor && first[col.vendor] ? first[col.vendor] : "–";
+      document.getElementById("infoShipment").textContent =
+        col.shipment && first[col.shipment] ? first[col.shipment] : "–";
+    }
+
+    function renderDocTable(rows) {
+      const table = document.getElementById("docTable");
+      let html = "<thead><tr>";
+
+      if (col.stepCode) html += `<th>${escapeHtml(col.stepCode)}</th>`;
+      if (col.status)   html += `<th>Status</th>`;
+      if (col.timestamp)html += `<th>${escapeHtml(col.timestamp)}</th>`;
+
+      linkColumns.forEach(c => {
+        html += `<th>${escapeHtml(c)}</th>`;
+      });
+
+      html += "</tr></thead><tbody>";
+
+      rows.forEach(r => {
+        html += "<tr>";
+
+        if (col.stepCode) {
+          html += `<td>${escapeHtml(r[col.stepCode])}</td>`;
+        }
+
+        if (col.status) {
+          const rawStatus = String(r[col.status] || "").toLowerCase();
+          const isDone =
+            rawStatus.includes("done") ||
+            rawStatus.includes("completed") ||
+            rawStatus.includes("ok");
+          const css = isDone ? "done" : "pending";
+          const label = r[col.status] || (isDone ? "Done" : "Pending");
+          html += `<td class="status-pill">
+            <span class="status-chip ${css}">
+              <span class="status-chip-dot"></span>${escapeHtml(label)}
+            </span>
+          </td>`;
+        }
+
+        if (col.timestamp) {
+          html += `<td>${escapeHtml(r[col.timestamp])}</td>`;
+        }
+
+        linkColumns.forEach(c => {
+          const raw = (r[c] || "").toString().trim();
+          if (raw && raw.startsWith("http")) {
+            html += `<td><a class="link" href="${escapeHtml(raw)}" target="_blank">Open</a></td>`;
+          } else {
+            html += `<td>${escapeHtml(raw)}</td>`;
+          }
+        });
+
+        html += "</tr>";
+      });
+
+      html += "</tbody>";
+      table.innerHTML = html;
+    }
+
+    /***********************
+     *   PAGE INIT         *
+     ***********************/
+
+    document.getElementById("loginBtn").addEventListener("click", () => {
+      loadExcel();
+    });
+
+    // Try to silently load if user already signed in before
+    (async () => {
+      setStatus("Ready. Click “Sign in” to load data.", "loading");
+      // Optional: auto-load if account already exists
+      const account = await getActiveAccount();
+      if (account) {
+        loadExcel();
+      }
+    })();
+  </script>
+</body>
+</html>
