@@ -422,9 +422,13 @@
               <span class="po-label">Primary filter</span>
               <div class="po-control">
                 <span class="po-control-label">Search PO wise</span>
-                <select id="poSelect" class="po-select">
-                  <option value="">All POs</option>
-                </select>
+                <input
+                  id="poInput"
+                  class="po-select"
+                  list="poList"
+                  placeholder="All POs"
+                  />
+                <datalist id="poList"></datalist>
               </div>
             </div>
 
@@ -861,4 +865,5 @@
   </script>
 </body>
 </html>
+
 
