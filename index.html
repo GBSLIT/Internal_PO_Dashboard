@@ -872,6 +872,20 @@
       document.getElementById("infoShipment").textContent =
         pickFirstNonEmpty(rows, col.shipment);
     }
+function getMaxLinks(rows, linkColumns) {
+  let max = 0;
+  rows.forEach(r => {
+    linkColumns.forEach(c => {
+      const raw = (r[c] || "").toString();
+      const links = raw
+        .split(",")
+        .map(l => l.trim())
+        .filter(l => l.startsWith("http"));
+      max = Math.max(max, links.length);
+    });
+  });
+  return max;
+}
 
     function renderDocTable(rows) {
       const table = document.getElementById("docTable");
@@ -881,9 +895,11 @@
       if (col.status) html += `<th>Status</th>`;
       if (col.timestamp) html += `<th>${escapeHtml(col.timestamp)}</th>`;
 
-      linkColumns.forEach((c) => {
-        html += `<th>${escapeHtml(c)}</th>`;
-      });
+      const maxLinks = getMaxLinks(rows, linkColumns);
+
+for (let i = 0; i < maxLinks; i++) {
+  html += `<th>Document Link${i === 0 ? "" : "_" + i}</th>`;
+}
 
       if (!col.stepCode && !col.status && !col.timestamp && linkColumns.length === 0) {
         columns.forEach((c) => {
@@ -919,16 +935,27 @@
           html += `<td>${escapeHtml(r[col.timestamp])}</td>`;
         }
 
-        linkColumns.forEach((c) => {
-          const raw = (r[c] || "").toString().trim();
-          if (raw && raw.startsWith("http")) {
-            html += `<td><a class="link" href="${escapeHtml(
-              raw
-            )}" target="_blank">Open</a></td>`;
-          } else {
-            html += `<td>${escapeHtml(raw)}</td>`;
-          }
-        });
+       const links = [];
+
+linkColumns.forEach(c => {
+  const raw = (r[c] || "").toString();
+  raw
+    .split(",")
+    .map(l => l.trim())
+    .filter(l => l.startsWith("http"))
+    .forEach(l => links.push(l));
+});
+
+for (let i = 0; i < maxLinks; i++) {
+  if (links[i]) {
+    html += `<td><a class="link" href="${escapeHtml(
+      links[i]
+    )}" target="_blank">Open</a></td>`;
+  } else {
+    html += `<td></td>`;
+  }
+}
+
 
         if (!col.stepCode && !col.status && !col.timestamp && linkColumns.length === 0) {
           columns.forEach((c) => {
@@ -961,3 +988,4 @@
   </script>
 </body>
 </html>
+
